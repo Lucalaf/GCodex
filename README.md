@@ -85,6 +85,10 @@ The asset filename is matched by suffix (`.rpm`), so keeping the
 Runtime dependencies (declared in `src-tauri/tauri.conf.json`): `gtk3`,
 `webkit2gtk4.1`, `openssl-libs`, `systemd-libs`.
 
+## License
+
+[MIT](LICENSE) © 2026 Luc Laflamme
+
 ## Layout
 
 ```text
