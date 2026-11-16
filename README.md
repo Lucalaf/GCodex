@@ -8,6 +8,8 @@ with a live 3D toolpath and stock visualizer.
 - **Frontend:** React 19 + TypeScript + Three.js — resizable dock layout, 3D stock
   carving, jogging, gamepad support, touch-plate probing.
 
+![GCodex workspace: digital readout, jog control, 3D toolpath viewport with ViewCube, G-code job streamer and serial console](.images/screenshot.png)
+
 See [`AGENTS.md`](AGENTS.md) for the full architecture guide.
 
 ## Development
