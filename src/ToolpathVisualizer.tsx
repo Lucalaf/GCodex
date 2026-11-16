@@ -90,6 +90,13 @@ const GRID_UNITS: Record<GcodeUnit, { pitch: number; label: string }> = {
 const GRID_BASE_EXTENT = 320;
 const GRID_MAX_EXTENT = 700;
 
+/**
+ * Gap between the stock underside and the worktable grid, in mm. The two are
+ * otherwise coplanar, and a hair of clearance keeps them from z-fighting when
+ * the bed is viewed from below.
+ */
+const GRID_BED_CLEARANCE = 0.1;
+
 interface GridRefs {
   major: THREE.LineSegments[];
   minor: THREE.LineSegments | null;
@@ -102,10 +109,18 @@ interface GridRefs {
  * Builds the XY worktable grid: fine minor lines, a darker major line every
  * fifth division, the two dashed axes, and X / Y badges at the extreme ends of
  * the grid. Pitch follows the project units; extent follows the loaded job.
+ *
+ * `bedZ` is the height of the machine bed. The grid is drawn there — under the
+ * stock — rather than at the work origin, where it would otherwise be a sheet
+ * of lines lying across the top of the part. The offset is baked into the
+ * geometry and the badge positions instead of being applied to the parent
+ * group, because the per-frame badge projection treats sprite positions as
+ * world coordinates.
  */
 function buildWorktableGrid(
   halfExtent: number,
-  unit: GcodeUnit
+  unit: GcodeUnit,
+  bedZ = 0
 ): { group: THREE.Group; refs: GridRefs } {
   const { pitch } = GRID_UNITS[unit];
   const group = new THREE.Group();
@@ -126,8 +141,8 @@ function buildWorktableGrid(
     if (subdivisions > 1 && i % subdivisions === 0) continue;
     if (subdivisions === 1 && i % 5 === 0) continue; // accent every 5th line
     const v = i * minorStep;
-    minor.push(v, -half, 0, v, half, 0);
-    minor.push(-half, v, 0, half, v, 0);
+    minor.push(v, -half, bedZ, v, half, bedZ);
+    minor.push(-half, v, bedZ, half, v, bedZ);
   }
   const minorGeom = new THREE.BufferGeometry();
   minorGeom.setAttribute(
@@ -149,8 +164,8 @@ function buildWorktableGrid(
   const major: number[] = [];
   for (let i = -majorCount; i <= majorCount; i++) {
     const v = i * pitch;
-    major.push(v, -half, 0, v, half, 0);
-    major.push(-half, v, 0, half, v, 0);
+    major.push(v, -half, bedZ, v, half, bedZ);
+    major.push(-half, v, bedZ, half, v, bedZ);
   }
   const majorGeom = new THREE.BufferGeometry();
   majorGeom.setAttribute(
@@ -169,9 +184,11 @@ function buildWorktableGrid(
   group.add(majorSegments);
 
   // --- X / Y axes through the work origin --------------------------------
+  // Drawn just above the grid plane so they win against the grid lines when
+  // both are edge-on, but below the stock so the part occludes them.
   const axisPositions = new Float32Array([
-    -half, 0, 0.06, half, 0, 0.06, // X
-    0, -half, 0.06, 0, half, 0.06, // Y
+    -half, 0, bedZ + 0.06, half, 0, bedZ + 0.06, // X
+    0, -half, bedZ + 0.06, 0, half, bedZ + 0.06, // Y
   ]);
   const axisColors = new Float32Array([
     0.55, 0.2, 0.2, 0.85, 0.32, 0.32, 0.13, 0.5, 0.28, 0.25, 0.78, 0.42,
@@ -188,7 +205,6 @@ function buildWorktableGrid(
       vertexColors: true,
       transparent: true,
       opacity: 0.95,
-      depthTest: false,
     })
   );
   axes.renderOrder = 3;
@@ -236,8 +252,8 @@ function buildWorktableGrid(
 
   const xBadge = makeBadge('X', '#ef4444');
   const yBadge = makeBadge('Y', '#22c55e');
-  xBadge.position.set(half, 0, 1.5);
-  yBadge.position.set(0, half, 1.5);
+  xBadge.position.set(half, 0, bedZ + 1.5);
+  yBadge.position.set(0, half, bedZ + 1.5);
   // Remember where each badge belongs so the per-frame viewport clamping can
   // restore it before re-projecting, instead of drifting frame after frame.
   xBadge.userData.homePosition = xBadge.position.clone();
@@ -321,6 +337,39 @@ function createViewCubeFaceTexture(label: string, highlight = false): THREE.Canv
 }
 
 /**
+ * Vertical extent of the stock block for a project. `topZ` is the uncut top
+ * surface (the work origin for most jobs); `bottomZ` is the underside, which is
+ * where the machine bed sits.
+ *
+ * The shaded stock mesh and the worktable grid both derive their Z from here so
+ * the grid can never drift away from the bottom of the part.
+ */
+function computeStockZRange(
+  toolpath: ParsedToolpath | null
+): { topZ: number; bottomZ: number } | null {
+  if (!toolpath || toolpath.segments.length === 0) return null;
+
+  const cb = toolpath.cutBounds;
+
+  let highestXYCutZ = -Infinity;
+  for (const seg of toolpath.segments) {
+    if (!seg.rapid && (seg.start.x !== seg.end.x || seg.start.y !== seg.end.y)) {
+      const maxSegZ = Math.max(seg.start.z, seg.end.z);
+      if (maxSegZ > highestXYCutZ) highestXYCutZ = maxSegZ;
+    }
+  }
+  if (!Number.isFinite(highestXYCutZ)) highestXYCutZ = cb.max.z;
+
+  if (cb.min.z < -0.01) {
+    return { topZ: 0.0, bottomZ: Math.min(cb.min.z - 2.0, -2.5) };
+  }
+  return {
+    topZ: Math.max(1.0, highestXYCutZ),
+    bottomZ: Math.min(-2.0, cb.min.z - 2.0),
+  };
+}
+
+/**
  * Generates a clean, CAD-grade 3D machined stock mesh from the .nc toolpath.
  * Uses dual-grid boundary vertex snapping (snapping grid vertices near the cut edge directly onto
  * the exact analytical tool radius curve) plus crisp vertical wall normals and flat floor normals,
@@ -344,27 +393,9 @@ function buildWatertightStockMesh(
   const minY = cb.min.y - margin;
   const maxY = cb.max.y + margin;
 
-  let highestXYCutZ = -Infinity;
-  for (let i = 0; i < toolpath.segments.length; i++) {
-    const seg = toolpath.segments[i];
-    if (!seg.rapid && (seg.start.x !== seg.end.x || seg.start.y !== seg.end.y)) {
-      const maxSegZ = Math.max(seg.start.z, seg.end.z);
-      if (maxSegZ > highestXYCutZ) highestXYCutZ = maxSegZ;
-    }
-  }
-  if (!Number.isFinite(highestXYCutZ)) {
-    highestXYCutZ = cb.max.z;
-  }
-
-  let topZ: number;
-  let bottomZ: number;
-  if (cb.min.z < -0.01) {
-    topZ = 0.0;
-    bottomZ = Math.min(cb.min.z - 2.0, -2.5);
-  } else {
-    topZ = Math.max(1.0, highestXYCutZ);
-    bottomZ = Math.min(-2.0, cb.min.z - 2.0);
-  }
+  const zRange = computeStockZRange(toolpath);
+  if (!zRange) return null;
+  const { topZ, bottomZ } = zRange;
   const cutDepthSpan = Math.max(0.5, topZ - bottomZ);
 
   const width = Math.max(10, maxX - minX);
@@ -1627,7 +1658,14 @@ export default function ToolpathVisualizer({
     group.clear();
     previous.forEach((child) => disposeGroup(child));
 
-    const built = buildWorktableGrid(halfExtent, gridUnit);
+    // Sit the worktable at bed level — the underside of the stock block — so
+    // it reads as the machine table under the part instead of lines drawn
+    // across its top surface. With no job loaded there is no stock, so the
+    // grid sits at the work-origin plane.
+    const stockZ = computeStockZRange(toolpath);
+    const bedZ = stockZ ? stockZ.bottomZ - GRID_BED_CLEARANCE : 0;
+
+    const built = buildWorktableGrid(halfExtent, gridUnit, bedZ);
     built.group.visible = showGrid;
     // Re-parent the built children into the stable group the camera code uses.
     for (const child of [...built.group.children]) {
