@@ -1,0 +1,24 @@
+[package]
+name = "gcodex"
+version = "0.1.0"
+description = "Cross-platform CNC controller and G-code sender"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serialport = "4.3"
+
+# Self-updater: GitHub release lookup + RPM download.
+#
+# TLS backend note: reqwest's `rustls` feature hard-depends on aws-lc-rs, which
+# needs cmake + nasm to build — neither is present in the Fedora/Ubuntu build
+# containers. `native-tls` instead uses OpenSSL on Linux (headers already
+# required by the GTK/WebKit stack) and schannel on Windows, so it builds
+# everywhere without extra toolchain. `json` is not enabled: we parse the
+# release payload with serde_json directly to keep the dependency surface small.
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "native-tls", "http2", "system-proxy"] }

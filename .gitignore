@@ -1,0 +1,72 @@
+# ---------------------------------------------------------------
+# Dependencies
+# ---------------------------------------------------------------
+node_modules/
+
+# ---------------------------------------------------------------
+# Build output
+# ---------------------------------------------------------------
+dist/
+dist-ssr/
+
+# Local packaging artifacts (RPM / DEB / AppImage)
+dist-linux/
+*.rpm
+*.deb
+*.AppImage
+*.msi
+*.dmg
+
+# Rust build artifacts
+target/
+src-tauri/target/
+
+# Tauri schema/codegen output
+src-tauri/gen/schemas/
+
+# ---------------------------------------------------------------
+# Machine-specific configuration — MUST NOT be committed
+# ---------------------------------------------------------------
+# Absolute Windows MSVC paths + unscoped [env] flags. Committing this
+# breaks Linux gcc/pkg-config builds. (See AGENTS.md guardrails.)
+src-tauri/.cargo/
+
+# ---------------------------------------------------------------
+# Environment / secrets
+# ---------------------------------------------------------------
+.env
+.env.*
+*.local
+*.pem
+*.key
+*.p12
+*.pfx
+
+# ---------------------------------------------------------------
+# Stray Windows registry-cache trees from an unexpanded %SystemDrive%
+# path in a build tool. Never belongs in the repo.
+# ---------------------------------------------------------------
+%SystemDrive%/
+src-tauri/%SystemDrive%/
+
+# ---------------------------------------------------------------
+# Editor / OS
+# ---------------------------------------------------------------
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# ---------------------------------------------------------------
+# Local tooling / agent state
+# ---------------------------------------------------------------
+.claude/settings.local.json
+.cterm
+
+# ---------------------------------------------------------------
+# Logs
+# ---------------------------------------------------------------
+*.log
+npm-debug.log*

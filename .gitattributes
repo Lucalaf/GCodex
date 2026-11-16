@@ -1,0 +1,32 @@
+# Normalize line endings: LF in the repo, LF in the working tree.
+# This project targets Linux first (WebKitGTK, RPM builds), and CRLF in
+# scripts/*.sh breaks execution under bash on Linux/macOS.
+* text=auto eol=lf
+
+# Shell scripts must stay LF
+*.sh text eol=lf
+
+# Source
+*.rs   text eol=lf
+*.ts   text eol=lf
+*.tsx  text eol=lf
+*.json text eol=lf
+*.toml text eol=lf
+*.md   text eol=lf
+*.css  text eol=lf
+*.html text eol=lf
+
+# Windows batch files need CRLF
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+
+# Binary assets — never touch
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.ico  binary
+*.icns binary
+*.svg  text
+*.rpm  binary
+*.deb  binary
+*.msi  binary
